@@ -1,0 +1,243 @@
+import Context from "android.content.Context";
+import Intent from "android.content.Intent";
+import Bundle from "android.os.Bundle";
+import SpeechRecognizer from "android.speech.SpeechRecognizer";
+import RecognitionListener from "android.speech.RecognitionListener";
+import RecognizerIntent from "android.speech.RecognizerIntent";
+import ArrayList from "java.util.ArrayList";
+import Log from "android.util.Log";
+
+import { UTSAndroid } from "io.dcloud.uts";
+import UniJSCallback from "io.dcloud.feature.uniapp.bridge.UniJSCallback";
+import JSONObject from "com.alibaba.fastjson.JSONObject";
+
+/*
+ * Modified at: 2026-02-23 20:10 (Force Recompile)
+ */
+export class AndroidASR {
+    private speechRecognizer: SpeechRecognizer | null = null;
+    private context: Context | null = null;
+    private intent: Intent | null = null;
+    private listener: UniJSCallback | null = null;
+    private isListening: boolean = false;
+    
+    constructor() {
+        this.context = UTSAndroid.getUniActivity()!.getApplicationContext();
+        this.init();
+    }
+    
+    public setListener(callback: UniJSCallback) {
+        this.listener = callback;
+    }
+    
+    private emit(type: string, data: any) {
+        if (this.listener != null) {
+            // 终极方案：利用 invokeAndKeepAlive 可能支持的可变参数或直接传递 Map
+            // 既然 JSONObject 也不行，我们尝试最原始的 HashMap，或者直接构建一个符合 UTS 标准的对象
+            // 但考虑到之前的失败，这里尝试一种更通用的做法：
+            // 将 type 和 data 作为两个独立的参数传递（如果支持），或者
+            // 回退到最安全的 String 传输，但在前端做极致的防御
+            
+            const res = new JSONObject();
+            res.put("type", type);
+            // 确保 data 是兼容类型，如果 data 是复杂对象，先转 string 再 put
+            // 这样可以避免 FastJSON 内部序列化 data 时的深层类型问题
+            if (data != null && typeof data != 'string' && typeof data != 'number' && typeof data != 'boolean') {
+                 res.put("data", JSON.stringify(data));
+                 res.put("isDataString", true); // 标记 data 被转成了 string
+            } else {
+                 res.put("data", data);
+                 res.put("isDataString", false);
+            }
+
+            Log.d("AndroidASR", "Emit: " + type);
+            this.listener!.invokeAndKeepAlive(res);
+        }
+    }
+    
+    private init() {
+        UTSAndroid.getUniActivity()!.runOnUiThread(():void => {
+            if (SpeechRecognizer.isRecognitionAvailable(this.context!)) {
+                this.speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this.context!);
+                
+                // 设置监听器
+                const recognitionListener = new MyRecognitionListener(this);
+                this.speechRecognizer!.setRecognitionListener(recognitionListener);
+                
+                this.intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                this.intent!.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                this.intent!.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+                this.intent!.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+                // 解决权限提示不弹出的问题，添加 calling package
+                this.intent!.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, this.context!.getPackageName());
+                
+                // 通知初始化成功
+                this.emit("init", { success: true, msg: "SpeechRecognizer initialized" });
+            } else {
+                this.emit("error", { code: -1, msg: "SpeechRecognizer not available on this device" });
+            }
+        });
+    }
+    
+    /**
+     * 开始监听
+     */
+    public startListening() {
+        if (this.speechRecognizer != null) {
+            UTSAndroid.getUniActivity()!.runOnUiThread(():void => {
+                 try {
+                    this.speechRecognizer!.startListening(this.intent!);
+                    this.isListening = true;
+                    this.emit("start", {});
+                } catch (e) {
+                    this.emit("error", { code: -2, msg: e.message });
+                }
+            });
+        }
+    }
+    
+    /**
+     * 停止监听
+     */
+    public stopListening() {
+        if (this.speechRecognizer != null && this.isListening) {
+             UTSAndroid.getUniActivity()!.runOnUiThread(():void => {
+                this.speechRecognizer!.stopListening();
+                this.isListening = false;
+             });
+        }
+    }
+    
+    /**
+     * 取消监听
+     */
+    public cancel() {
+        if (this.speechRecognizer != null) {
+             UTSAndroid.getUniActivity()!.runOnUiThread(():void => {
+                this.speechRecognizer!.cancel();
+                this.isListening = false;
+             });
+        }
+    }
+    
+    /**
+     * 销毁
+     */
+    public destroy() {
+        if (this.speechRecognizer != null) {
+             UTSAndroid.getUniActivity()!.runOnUiThread(():void => {
+                this.speechRecognizer!.destroy();
+                this.speechRecognizer = null;
+             });
+        }
+    }
+
+    // 内部方法，供 Listener 调用
+    public onReadyForSpeech(params: Bundle | null) {
+        this.emit("ready", {});
+    }
+
+    public onBeginningOfSpeech() {
+        this.emit("begin", {});
+    }
+
+    public onRmsChanged(rmsdB: Float) {
+        // 音量变化，可选回调
+        this.emit("volume", { volume: rmsdB });
+    }
+
+    public onBufferReceived(buffer: ByteArray | null) {
+    }
+
+    public onEndOfSpeech() {
+        this.isListening = false;
+        this.emit("end", {});
+    }
+
+    public onError(error: Int) {
+        this.isListening = false;
+        let msg = "Unknown error";
+        switch (error) {
+            case SpeechRecognizer.ERROR_AUDIO: msg = "Audio recording error"; break;
+            case SpeechRecognizer.ERROR_CLIENT: msg = "Client side error"; break;
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS: msg = "Insufficient permissions"; break;
+            case SpeechRecognizer.ERROR_NETWORK: msg = "Network error"; break;
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT: msg = "Network timeout"; break;
+            case SpeechRecognizer.ERROR_NO_MATCH: msg = "No match"; break;
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: msg = "Recognizer busy"; break;
+            case SpeechRecognizer.ERROR_SERVER: msg = "Server error"; break;
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT: msg = "No speech input"; break;
+        }
+        this.emit("error", { code: error, msg: msg });
+    }
+
+    public onResults(results: Bundle | null) {
+        if (results != null) {
+            const matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+            if (matches != null && matches.size > 0) {
+                const text = matches.get(0);
+                this.emit("result", { text: text, isFinal: true });
+            }
+        }
+    }
+
+    public onPartialResults(partialResults: Bundle | null) {
+        if (partialResults != null) {
+            const matches = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+            if (matches != null && matches.size > 0) {
+                const text = matches.get(0);
+                this.emit("result", { text: text, isFinal: false });
+            }
+        }
+    }
+
+    public onEvent(eventType: Int, params: Bundle | null) {
+    }
+}
+
+/**
+ * 实现 RecognitionListener 接口
+ */
+class MyRecognitionListener implements RecognitionListener {
+    private asr: AndroidASR;
+    
+    constructor(asr: AndroidASR) {
+        this.asr = asr;
+    }
+
+    override onReadyForSpeech(params: Bundle | null) {
+        this.asr.onReadyForSpeech(params);
+    }
+
+    override onBeginningOfSpeech() {
+        this.asr.onBeginningOfSpeech();
+    }
+
+    override onRmsChanged(rmsdB: Float) {
+        this.asr.onRmsChanged(rmsdB);
+    }
+
+    override onBufferReceived(buffer: ByteArray | null) {
+        this.asr.onBufferReceived(buffer);
+    }
+
+    override onEndOfSpeech() {
+        this.asr.onEndOfSpeech();
+    }
+
+    override onError(error: Int) {
+        this.asr.onError(error);
+    }
+
+    override onResults(results: Bundle | null) {
+        this.asr.onResults(results);
+    }
+
+    override onPartialResults(partialResults: Bundle | null) {
+        this.asr.onPartialResults(partialResults);
+    }
+
+    override onEvent(eventType: Int, params: Bundle | null) {
+        this.asr.onEvent(eventType, params);
+    }
+}

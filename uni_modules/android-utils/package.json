@@ -1,0 +1,107 @@
+{
+  "id": "android-utils",
+  "displayName": "Android ios 鸿蒙 免费系统语音合成 文字转语音 tts ",
+  "version": "1.0.10",
+  "description": "Android ios 鸿蒙 免费文字转语音  语音合成 安卓原生语音合成.基础工具 语音状态监听， 原生吐司 对话框 启用 禁用截图录屏等 ",
+  "keywords": [
+    "语音合成",
+    "文字转语音",
+    "toast，",
+    "吐司",
+    "，原生弹窗"
+],
+  "repository": "",
+  "engines": {
+    "HBuilderX": "^3.96",
+    "uni-app": "^4.07",
+    "uni-app-x": "^4.07"
+  },
+  "dcloudext": {
+    "type": "uts",
+    "sale": {
+      "regular": {
+        "price": "12.00"
+      },
+      "sourcecode": {
+        "price": "100.00"
+      }
+    },
+    "contact": {
+      "qq": ""
+    },
+    "declaration": {
+      "ads": "无",
+      "data": "无",
+      "permissions": "<uses-permission android:name=\"android.permission.ACCESSIBILITY_SERVICE\"/>"
+    },
+    "npmurl": "",
+    "darkmode": "√",
+    "i18n": "√",
+    "widescreen": "√"
+  },
+  "uni_modules": {
+    "dependencies": [],
+    "encrypt": [],
+    "platforms": {
+      "client": {
+        "uni-app": {
+          "vue": {
+            "vue2": "√",
+            "vue3": "√"
+          },
+          "web": {
+            "safari": "-",
+            "chrome": "-"
+          },
+          "app": {
+            "vue": "√",
+            "nvue": "√",
+            "android": {
+              "extVersion": "",
+              "minVersion": "21"
+            },
+            "ios": "√",
+            "harmony": "√"
+          },
+          "mp": {
+            "weixin": "-",
+            "alipay": "-",
+            "toutiao": "-",
+            "baidu": "-",
+            "kuaishou": "-",
+            "jd": "-",
+            "harmony": "-",
+            "qq": "-",
+            "lark": "-"
+          },
+          "quickapp": {
+            "huawei": "-",
+            "union": "-"
+          }
+        },
+        "uni-app-x": {
+          "web": {
+            "safari": "-",
+            "chrome": "-"
+          },
+          "app": {
+            "android": {
+              "extVersion": "",
+              "minVersion": "21"
+            },
+            "ios": "√",
+            "harmony": "√"
+          },
+          "mp": {
+            "weixin": "-"
+          }
+        }
+      },
+      "cloud": {
+        "tcb": "x",
+        "aliyun": "x",
+        "alipay": "x"
+      }
+    }
+  }
+}

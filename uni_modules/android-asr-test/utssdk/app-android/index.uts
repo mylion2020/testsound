@@ -1,0 +1,253 @@
+import { UTSAndroid, UTSCallback, UTSJSONObject } from "io.dcloud.uts";
+import Context from "android.content.Context";
+import Intent from "android.content.Intent";
+import Bundle from "android.os.Bundle";
+import SpeechRecognizer from "android.speech.SpeechRecognizer";
+import RecognitionListener from "android.speech.RecognitionListener";
+import RecognizerIntent from "android.speech.RecognizerIntent";
+import ArrayList from "java.util.ArrayList";
+import Log from "android.util.Log";
+
+/**
+ * Android 语音识别封装类
+ * Modified at: 2026-02-23 21:00 (Use UTSCallback standard)
+ */
+export class AndroidASR {
+    private speechRecognizer: SpeechRecognizer | null = null;
+    private context: Context | null = null;
+    private intent: Intent | null = null;
+    private listener: UTSCallback | null = null;
+    private isListening: boolean = false;
+    
+    constructor() {
+        this.context = UTSAndroid.getUniActivity()!.getApplicationContext();
+        Log.d("AndroidASR", "constructor executed");
+        // 移除构造函数中的 init 调用，避免回调丢失
+        // this.init();
+    }
+    
+    public setListener(callback: UTSCallback) {
+        Log.d("AndroidASR", "setListener called");
+        this.listener = callback;
+    }
+    
+    private emit(type: string, data: any) {
+        Log.d("AndroidASR", "emit called: " + type);
+        if (this.listener != null) {
+            // 回归官方推荐：使用 UTSJSONObject
+            const res = new UTSJSONObject();
+            res.set("type", type);
+            res.set("data", data);
+            
+            // 尝试直接调用 invoke
+            // 由于 UTSCallback 默认是一次性的，我们需要在前端通过“重注册”机制来实现保活
+            // 即：前端每次收到回调后，立刻再次调用 setListener
+            try {
+                this.listener!(res);
+                Log.d("AndroidASR", "emit success");
+            } catch (e) {
+                Log.e("AndroidASR", "emit failed: " + e.message);
+            }
+        } else {
+            Log.e("AndroidASR", "emit failed: listener is null");
+        }
+    }
+    
+    public init() {
+        Log.d("AndroidASR", "init called");
+        UTSAndroid.getUniActivity()!.runOnUiThread(():void => {
+            try {
+                if (SpeechRecognizer.isRecognitionAvailable(this.context!)) {
+                    Log.d("AndroidASR", "RecognitionAvailable");
+                    this.speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this.context!);
+                    
+                    // 设置监听器
+                    // const recognitionListener = new MyRecognitionListener(this);
+                    // this.speechRecognizer!.setRecognitionListener(recognitionListener);
+                    // 修正：内部类可能无法访问外部类的私有方法，直接用外部类实例
+                    this.speechRecognizer!.setRecognitionListener(new MyRecognitionListener(this));
+                    
+                    this.intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                    this.intent!.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                    this.intent!.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+                    this.intent!.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+                    // 解决权限提示不弹出的问题，添加 calling package
+                    this.intent!.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, this.context!.getPackageName());
+                    
+                    // 通知初始化成功
+                    this.emit("init", { success: true, msg: "SpeechRecognizer initialized" });
+                } else {
+                    Log.e("AndroidASR", "Recognition NOT Available");
+                    this.emit("error", { code: -1, msg: "SpeechRecognizer not available on this device" });
+                }
+            } catch (e) {
+                Log.e("AndroidASR", "init exception: " + e.message);
+                this.emit("error", { code: -3, msg: "Init exception: " + e.message });
+            }
+        });
+    }
+    
+    /**
+     * 开始监听
+     */
+    public startListening() {
+        if (this.speechRecognizer != null) {
+            UTSAndroid.getUniActivity()!.runOnUiThread(():void => {
+                 try {
+                    this.speechRecognizer!.startListening(this.intent!);
+                    this.isListening = true;
+                    this.emit("start", {});
+                } catch (e) {
+                    this.emit("error", { code: -2, msg: e.message });
+                }
+            });
+        }
+    }
+    
+    /**
+     * 停止监听
+     */
+    public stopListening() {
+        if (this.speechRecognizer != null && this.isListening) {
+             UTSAndroid.getUniActivity()!.runOnUiThread(():void => {
+                this.speechRecognizer!.stopListening();
+                this.isListening = false;
+             });
+        }
+    }
+    
+    /**
+     * 取消监听
+     */
+    public cancel() {
+        if (this.speechRecognizer != null) {
+             UTSAndroid.getUniActivity()!.runOnUiThread(():void => {
+                this.speechRecognizer!.cancel();
+                this.isListening = false;
+             });
+        }
+    }
+    
+    /**
+     * 销毁
+     */
+    public destroy() {
+        if (this.speechRecognizer != null) {
+             UTSAndroid.getUniActivity()!.runOnUiThread(():void => {
+                this.speechRecognizer!.destroy();
+                this.speechRecognizer = null;
+             });
+        }
+    }
+
+    // 内部方法，供 Listener 调用
+    public onReadyForSpeech(params: Bundle | null) {
+        this.emit("ready", {});
+    }
+
+    public onBeginningOfSpeech() {
+        this.emit("begin", {});
+    }
+
+    public onRmsChanged(rmsdB: Float) {
+        // 音量变化，可选回调
+        this.emit("volume", { volume: rmsdB });
+    }
+
+    public onBufferReceived(buffer: ByteArray | null) {
+    }
+
+    public onEndOfSpeech() {
+        this.isListening = false;
+        this.emit("end", {});
+    }
+
+    public onError(error: Int) {
+        this.isListening = false;
+        let msg = "Unknown error";
+        switch (error) {
+            case SpeechRecognizer.ERROR_AUDIO: msg = "Audio recording error"; break;
+            case SpeechRecognizer.ERROR_CLIENT: msg = "Client side error"; break;
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS: msg = "Insufficient permissions"; break;
+            case SpeechRecognizer.ERROR_NETWORK: msg = "Network error"; break;
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT: msg = "Network timeout"; break;
+            case SpeechRecognizer.ERROR_NO_MATCH: msg = "No match"; break;
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: msg = "Recognizer busy"; break;
+            case SpeechRecognizer.ERROR_SERVER: msg = "Server error"; break;
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT: msg = "No speech input"; break;
+        }
+        Log.e("AndroidASR", "onError: " + error + " - " + msg);
+        this.emit("error", { code: error, msg: msg });
+    }
+
+    public onResults(results: Bundle | null) {
+        if (results != null) {
+            const matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+            if (matches != null && matches.size > 0) {
+                const text = matches.get(0);
+                this.isListening = false;
+                this.emit("result", { text: text, isFinal: true });
+            }
+        }
+    }
+
+    public onPartialResults(partialResults: Bundle | null) {
+        if (partialResults != null) {
+            const matches = partialResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+            if (matches != null && matches.size > 0) {
+                const text = matches.get(0);
+                this.emit("result", { text: text, isFinal: false });
+            }
+        }
+    }
+
+    public onEvent(eventType: Int, params: Bundle | null) {
+    }
+}
+
+/**
+ * 实现 RecognitionListener 接口
+ */
+class MyRecognitionListener implements RecognitionListener {
+    private asr: AndroidASR;
+    
+    constructor(asr: AndroidASR) {
+        this.asr = asr;
+    }
+
+    override onReadyForSpeech(params: Bundle | null) {
+        this.asr.onReadyForSpeech(params);
+    }
+
+    override onBeginningOfSpeech() {
+        this.asr.onBeginningOfSpeech();
+    }
+
+    override onRmsChanged(rmsdB: Float) {
+        this.asr.onRmsChanged(rmsdB);
+    }
+
+    override onBufferReceived(buffer: ByteArray | null) {
+        this.asr.onBufferReceived(buffer);
+    }
+
+    override onEndOfSpeech() {
+        this.asr.onEndOfSpeech();
+    }
+
+    override onError(error: Int) {
+        this.asr.onError(error);
+    }
+
+    override onResults(results: Bundle | null) {
+        this.asr.onResults(results);
+    }
+
+    override onPartialResults(partialResults: Bundle | null) {
+        this.asr.onPartialResults(partialResults);
+    }
+
+    override onEvent(eventType: Int, params: Bundle | null) {
+        this.asr.onEvent(eventType, params);
+    }
+}

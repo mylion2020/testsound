@@ -1,0 +1,8 @@
+export class AndroidASR {
+    constructor() {}
+    setListener(callback: any) {}
+    startListening() {}
+    stopListening() {}
+    cancel() {}
+    destroy() {}
+}

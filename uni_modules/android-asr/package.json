@@ -1,0 +1,41 @@
+{
+	"id": "android-asr",
+	"displayName": "Android 原生语音识别",
+	"version": "1.0.0",
+	"description": "基于 Android SpeechRecognizer 的原生语音识别插件",
+	"keywords": ["asr", "speech", "recognition", "语音识别", "android"],
+	"dcloudext": {
+		"type": "uts",
+		"sale": {
+			"regular": {
+				"price": "0.00"
+			},
+			"sourcecode": {
+				"price": "0.00"
+			}
+		},
+		"declaration": {
+			"ads": "",
+			"data": "",
+			"permissions": ""
+		},
+		"npmurl": ""
+	},
+	"uni_modules": {
+		"dependencies": [],
+		"encrypt": [],
+		"platforms": {
+			"client": {
+				"uni-app": {
+					"vue": {
+						"vue2": "√",
+						"vue3": "√"
+					}
+				},
+                "uni-app-x": {
+                    "uvue": "√"
+                }
+			}
+		}
+	}
+}
